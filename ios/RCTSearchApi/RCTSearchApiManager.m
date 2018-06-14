@@ -20,6 +20,8 @@ static NSString *const kSpotlightSearchItemTapped = @"spotlightSearchItemTapped"
 static NSString *const kAppHistorySearchItemTapped = @"appHistorySearchItemTapped";
 static NSString *const kApplicationLaunchOptionsUserActivityKey = @"UIApplicationLaunchOptionsUserActivityKey";
 
+static NSData *thumbnailImage = nil;
+
 typedef void (^ContentAttributeSetCreationCompletion)(CSSearchableItemAttributeSet *set, NSError *error);
 
 @interface RCTSearchApiManager ()
@@ -113,63 +115,63 @@ RCT_EXPORT_METHOD(indexItems:(NSArray *)items resolve:(RCTPromiseResolveBlock)re
 }
 
 RCT_EXPORT_METHOD(deleteItemsWithIdentifiers:(NSArray *)identifiers resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
-    [[CSSearchableIndex defaultSearchableIndex] deleteSearchableItemsWithIdentifiers:identifiers completionHandler:[self completionBlockWithResolve:resolve reject:reject]];
+  [[CSSearchableIndex defaultSearchableIndex] deleteSearchableItemsWithIdentifiers:identifiers completionHandler:[self completionBlockWithResolve:resolve reject:reject]];
 }
 
 RCT_EXPORT_METHOD(deleteItemsInDomains:(NSArray *)identifiers resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
-    [[CSSearchableIndex defaultSearchableIndex] deleteSearchableItemsWithDomainIdentifiers:identifiers completionHandler:[self completionBlockWithResolve:resolve reject:reject]];
+  [[CSSearchableIndex defaultSearchableIndex] deleteSearchableItemsWithDomainIdentifiers:identifiers completionHandler:[self completionBlockWithResolve:resolve reject:reject]];
 }
 
 RCT_REMAP_METHOD(deleteAllItems, resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
-    [[CSSearchableIndex defaultSearchableIndex] deleteAllSearchableItemsWithCompletionHandler:[self completionBlockWithResolve:resolve reject:reject]];
+  [[CSSearchableIndex defaultSearchableIndex] deleteAllSearchableItemsWithCompletionHandler:[self completionBlockWithResolve:resolve reject:reject]];
 }
 
 RCT_EXPORT_METHOD(createUserActivity:(NSDictionary *)item resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
-    [self createContentAttributeSetFromItem:item withCompletion:^(CSSearchableItemAttributeSet *set, NSError *error) {
-        dispatch_async(self.methodQueue, ^{
-            if (error || !set) {
-                NSError *e = error ?: RCTErrorWithMessage(@"Could not create a content attribute set");
-                reject(RCTErrorUnspecified, e.localizedDescription, e);
-            } else {
-                NSUserActivity *userActivity = [[NSUserActivity alloc] initWithActivityType:[NSBundle mainBundle].bundleIdentifier];
-                userActivity.contentAttributeSet = set;
-                userActivity.title = item.rctsa_title;
-                userActivity.userInfo = item.rctsa_userInfo;
-                userActivity.eligibleForPublicIndexing = item.rctsa_eligibleForPublicIndexing;
-                userActivity.expirationDate = item.rctsa_expirationDate;
-                userActivity.webpageURL = item.rctsa_webpageURL;
-                userActivity.eligibleForSearch = YES;
-                userActivity.eligibleForHandoff = NO;
-                [userActivity becomeCurrent];
-                [self.userActivities addObject:userActivity];
-                resolve(nil);
-            }
-        });
-    }];
+  [self createContentAttributeSetFromItem:item withCompletion:^(CSSearchableItemAttributeSet *set, NSError *error) {
+    dispatch_async(self.methodQueue, ^{
+      if (error || !set) {
+        NSError *e = error ?: RCTErrorWithMessage(@"Could not create a content attribute set");
+        reject(RCTErrorUnspecified, e.localizedDescription, e);
+      } else {
+        NSUserActivity *userActivity = [[NSUserActivity alloc] initWithActivityType:[NSBundle mainBundle].bundleIdentifier];
+        userActivity.contentAttributeSet = set;
+        userActivity.title = item.rctsa_title;
+        userActivity.userInfo = item.rctsa_userInfo;
+        userActivity.eligibleForPublicIndexing = item.rctsa_eligibleForPublicIndexing;
+        userActivity.expirationDate = item.rctsa_expirationDate;
+        userActivity.webpageURL = item.rctsa_webpageURL;
+        userActivity.eligibleForSearch = YES;
+        userActivity.eligibleForHandoff = NO;
+        [userActivity becomeCurrent];
+        [self.userActivities addObject:userActivity];
+        resolve(nil);
+      }
+    });
+  }];
 }
 
 #pragma mark - Private API
 
 - (void)handleContinueUserActivity:(NSNotification *)notification {
-    NSUserActivity *userActivity = notification.userInfo[kUserActivityKey];
-    if ([userActivity.activityType isEqualToString:CSSearchableItemActionType]) {
-        NSString *uniqueItemIdentifier = userActivity.userInfo[CSSearchableItemActivityIdentifier];
-        if (!uniqueItemIdentifier)
-            return;
-        [self sendEventWithName:kSpotlightSearchItemTapped body:uniqueItemIdentifier];
-    } else {
-        [self sendEventWithName:kAppHistorySearchItemTapped body:userActivity.userInfo];
-    }
+  NSUserActivity *userActivity = notification.userInfo[kUserActivityKey];
+  if ([userActivity.activityType isEqualToString:CSSearchableItemActionType]) {
+    NSString *uniqueItemIdentifier = userActivity.userInfo[CSSearchableItemActivityIdentifier];
+    if (!uniqueItemIdentifier)
+      return;
+    [self sendEventWithName:kSpotlightSearchItemTapped body:uniqueItemIdentifier];
+  } else {
+    [self sendEventWithName:kAppHistorySearchItemTapped body:userActivity.userInfo];
+  }
 }
 
 - (void (^)(NSError * _Nullable error))completionBlockWithResolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
-    return ^(NSError * _Nullable error) {
-        if (error) {
-            reject(RCTErrorUnspecified, error.localizedDescription, error);
-        } else {
-            resolve(nil);
-        }
-    };
+  return ^(NSError * _Nullable error) {
+    if (error) {
+      reject(RCTErrorUnspecified, error.localizedDescription, error);
+    } else {
+      resolve(nil);
+    }
+  };
 }
 
 - (void)retrieveInitialSearchItemOfType:(NSString *)type bodyBlock:(id (^)(NSUserActivity *))block resolve:(RCTPromiseResolveBlock)resolve {
@@ -188,14 +190,25 @@ RCT_EXPORT_METHOD(createUserActivity:(NSDictionary *)item resolve:(RCTPromiseRes
     attributeSet.title = item.rctsa_title;
     attributeSet.contentDescription = item.rctsa_contentDescription;
     attributeSet.keywords = item.rctsa_keywords;
-    if (item.rctsa_thumbnail) {
-        [self loadImageFromSource:item.rctsa_thumbnail withCompletion:^(NSError *error, UIImage *image) {
-            if (error || !image) {
-                return completionBlock(nil, error ?: RCTErrorWithMessage(@"Could not load an image"));
-            }
-            attributeSet.thumbnailData = UIImagePNGRepresentation(image);
-            completionBlock(attributeSet, nil);
-        }];
+
+    if (item.rctsa_thumbnailName) {
+        UIImage *image = [UIImage imageNamed:item.rctsa_thumbnailName];
+        NSData *imageData = [NSData dataWithData:UIImagePNGRepresentation(image)];
+        attributeSet.thumbnailData = imageData;
+        completionBlock(attributeSet, nil);
+    } else if (item.rctsa_thumbnail && !item.rctsa_thumbnailName) {
+        if (thumbnailImage != nil) {
+        attributeSet.thumbnailData = thumbnailImage;
+        completionBlock(attributeSet, nil);
+        } else {
+            [self loadImageFromSource:item.rctsa_thumbnail withCompletion:^(NSError *error, UIImage *image) {
+                if (image && !error) {
+                    thumbnailImage = UIImagePNGRepresentation(image);
+                }
+                attributeSet.thumbnailData = image && !error ? thumbnailImage : nil;
+                completionBlock(attributeSet, nil);
+            }];
+        }
     } else {
         completionBlock(attributeSet, nil);
     }
@@ -213,4 +226,3 @@ RCT_EXPORT_METHOD(createUserActivity:(NSDictionary *)item resolve:(RCTPromiseRes
 }
 
 @end
-

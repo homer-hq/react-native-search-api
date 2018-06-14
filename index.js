@@ -153,8 +153,7 @@ class SearchApi extends NativeEventEmitter {
      * See the comment above this class for more info.
      */
     indexSpotlightItems(items: Array): Promise {
-        var copies = items.map(item => resolveItemThumbnail(item));
-        return SearchApiManager.indexItems(copies);
+        return SearchApiManager.indexItems(items);
     }
 
     /**
@@ -190,16 +189,9 @@ class SearchApi extends NativeEventEmitter {
      * See the comment above this class for more info.
      */
     indexAppHistoryItem(item: Object): Promise {
-        var itemCopy = resolveItemThumbnail(item);
-        return SearchApiManager.createUserActivity(itemCopy);
+        return SearchApiManager.createUserActivity(item);
     }
 
-}
-
-function resolveItemThumbnail(item: Object): Object {
-    var itemCopy = JSON.parse(JSON.stringify(item));
-    itemCopy.thumbnail = resolveAssetSource(item.thumbnail);
-    return itemCopy;
 }
 
 export default new SearchApi();
